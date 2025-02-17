@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -71,6 +72,10 @@ type Relay struct {
 	// Server section
 	Server        *httptest.Server
 	ResponseDelay time.Duration
+
+	// Force response encodings
+	ForceJSON bool
+	ForceSSZ  bool
 }
 
 // NewRelay creates a mocked relay which implements the backend.BoostBackend interface
@@ -221,6 +226,7 @@ func (m *Relay) MakeGetHeaderResponse(value uint64, blockHash, parentHash, publi
 				ParentHash:      HexToHash(parentHash),
 				WithdrawalsRoot: phase0.Root{},
 				BaseFeePerGas:   uint256.NewInt(0),
+				ExtraData:       make([]byte, 0),
 			},
 			BlobKZGCommitments: make([]deneb.KZGCommitment, 0),
 			Value:              uint256.NewInt(value),
@@ -278,15 +284,11 @@ func (m *Relay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 		m.handlerOverrideGetHeader(w, req)
 		return
 	}
-	m.defaultHandleGetHeader(w)
+	m.defaultHandleGetHeader(w, req)
 }
 
 // defaultHandleGetHeader returns the default handler for handleGetHeader
-func (m *Relay) defaultHandleGetHeader(w http.ResponseWriter) {
-	// By default, everything will be ok.
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
+func (m *Relay) defaultHandleGetHeader(w http.ResponseWriter, req *http.Request) {
 	// Build the default response.
 	response := m.MakeGetHeaderResponse(
 		12345,
@@ -299,9 +301,42 @@ func (m *Relay) defaultHandleGetHeader(w http.ResponseWriter) {
 		response = m.GetHeaderResponse
 	}
 
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	respondJSON := func() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	respondSSZ := func() {
+		w.Header().Set("Eth-Consensus-Version", "deneb")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.WriteHeader(http.StatusOK)
+		sszData, err := response.Deneb.MarshalSSZ()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_, err = w.Write(sszData)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// We cannot use code in server, so this is a simplistic
+	// negotiation which should only be used in testing.
+	switch {
+	case m.ForceJSON:
+		respondJSON()
+	case m.ForceSSZ:
+		respondSSZ()
+	case strings.Contains(req.Header.Get("Accept"), "application/octet-stream"):
+		respondSSZ()
+	default:
+		respondJSON()
 	}
 }
 

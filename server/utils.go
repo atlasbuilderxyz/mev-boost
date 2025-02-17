@@ -26,12 +26,6 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-const (
-	HeaderKeySlotUID      = "X-MEVBoost-SlotID"
-	HeaderKeyVersion      = "X-MEVBoost-Version"
-	HeaderStartTimeUnixMS = "X-MEVBoost-StartTimeUnixMS"
-)
-
 var (
 	errHTTPErrorResponse  = errors.New("HTTP error response")
 	errInvalidForkVersion = errors.New("invalid fork version")

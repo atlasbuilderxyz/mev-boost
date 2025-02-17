@@ -28,6 +28,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
+	goacceptheaders "github.com/timewasted/go-accept-headers"
 )
 
 var (
@@ -132,7 +133,7 @@ func NewBoostService(opts BoostServiceOpts) (*BoostService, error) {
 }
 
 func (m *BoostService) respondError(w http.ResponseWriter, code int, message string) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(HeaderContentType, MediaTypeJSON)
 	w.WriteHeader(code)
 	resp := httpErrorResp{code, message}
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -142,7 +143,7 @@ func (m *BoostService) respondError(w http.ResponseWriter, code int, message str
 }
 
 func (m *BoostService) respondOK(w http.ResponseWriter, response any) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(HeaderContentType, MediaTypeJSON)
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		m.log.WithField("response", response).WithError(err).Error("could not write OK response")
@@ -227,12 +228,12 @@ func (m *BoostService) handleRegisterValidator(w http.ResponseWriter, req *http.
 	log.Debug("handling request")
 
 	// Get the user agent
-	ua := UserAgent(req.Header.Get("User-Agent"))
+	ua := UserAgent(req.Header.Get(HeaderUserAgent))
 	log = log.WithFields(logrus.Fields{"ua": ua})
 
 	// Additional header fields
 	header := req.Header
-	header.Set("User-Agent", wrapUserAgent(ua))
+	header.Set(HeaderUserAgent, wrapUserAgent(ua))
 	header.Set(HeaderStartTimeUnixMS, fmt.Sprintf("%d", time.Now().UTC().UnixMilli()))
 
 	// Read the validator registrations
@@ -260,9 +261,13 @@ func (m *BoostService) handleGetHeader(w http.ResponseWriter, req *http.Request)
 		vars          = mux.Vars(req)
 		parentHashHex = vars["parent_hash"]
 		pubkey        = vars["pubkey"]
-		ua            = UserAgent(req.Header.Get("User-Agent"))
+		ua            = UserAgent(req.Header.Get(HeaderUserAgent))
+
+		rawProposerAcceptContentTypes    = req.Header.Get(HeaderAccept)
+		parsedProposerAcceptContentTypes = goacceptheaders.Parse(rawProposerAcceptContentTypes)
 	)
 
+	// Parse the slot
 	slotValue, err := strconv.ParseUint(vars["slot"], 10, 64)
 	if err != nil {
 		m.respondError(w, http.StatusBadRequest, errInvalidSlot.Error())
@@ -270,22 +275,25 @@ func (m *BoostService) handleGetHeader(w http.ResponseWriter, req *http.Request)
 	}
 	slot := phase0.Slot(slotValue)
 
+	// Add relevant fields to the logger
 	log := m.log.WithFields(logrus.Fields{
-		"method":     "getHeader",
-		"slot":       slot,
-		"parentHash": parentHashHex,
-		"pubkey":     pubkey,
-		"ua":         ua,
+		"method":                        "getHeader",
+		"slot":                          slot,
+		"parentHash":                    parentHashHex,
+		"pubkey":                        pubkey,
+		"ua":                            ua,
+		"rawProposerAcceptContentTypes": rawProposerAcceptContentTypes,
 	})
-	log.Debug("getHeader")
+	log.Debug("handling request")
 
 	// Query the relays for the header
-	result, err := m.getHeader(log, ua, slot, pubkey, parentHashHex)
+	result, err := m.getHeader(log, slot, pubkey, parentHashHex, ua, rawProposerAcceptContentTypes)
 	if err != nil {
 		m.respondError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
+	// Bail if none of the relays returned a bid
 	if result.response.IsEmpty() {
 		log.Info("no bid received")
 		w.WriteHeader(http.StatusNoContent)
@@ -307,8 +315,31 @@ func (m *BoostService) handleGetHeader(w http.ResponseWriter, req *http.Request)
 		"relays":      strings.Join(types.RelayEntriesToStrings(result.relays), ", "),
 	}).Info("best bid")
 
-	// Return the bid
-	m.respondOK(w, &result.response)
+	// Default to JSON if the proposer provides nothing
+	if len(parsedProposerAcceptContentTypes) == 0 {
+		log.Info("no proposer accepts, defaulting to JSON")
+		parsedProposerAcceptContentTypes = goacceptheaders.AcceptSlice{{Type: MediaTypeJSON}}
+	}
+
+	// Get the proposer's highest quality acceptable media type
+	proposerPreferredContentType, err := parsedProposerAcceptContentTypes.Negotiate(MediaTypeJSON, MediaTypeOctetStream)
+	if err != nil {
+		log.WithError(err).Warn("failed to negotiate preferred content-type")
+		proposerPreferredContentType = MediaTypeJSON
+	}
+
+	// Respond appropriately
+	if proposerPreferredContentType == MediaTypeJSON {
+		log.Debug("responding with JSON")
+		m.respondGetHeaderJSON(w, &result)
+	} else if proposerPreferredContentType == MediaTypeOctetStream {
+		log.Debug("responding with SSZ")
+		m.respondGetHeaderSSZ(w, &result)
+	} else {
+		message := fmt.Sprintf("unsupported media type: %s", proposerPreferredContentType)
+		log.Error(message)
+		m.respondError(w, http.StatusNotAcceptable, message)
+	}
 }
 
 // respondPayload responds to the proposer with the payload
@@ -337,7 +368,7 @@ func (m *BoostService) handleGetPayload(w http.ResponseWriter, req *http.Request
 	}
 
 	// Read user agent for logging
-	userAgent := UserAgent(req.Header.Get("User-Agent"))
+	userAgent := UserAgent(req.Header.Get(HeaderUserAgent))
 
 	// New forks need to be added at the front of this array.
 	// The ordering of the array conveys precedence of the decoders.

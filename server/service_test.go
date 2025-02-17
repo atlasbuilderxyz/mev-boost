@@ -75,7 +75,7 @@ func newTestBackend(t *testing.T, numRelays int, relayTimeout time.Duration) *te
 	return &backend
 }
 
-func (be *testBackend) request(t *testing.T, method, path string, payload any) *httptest.ResponseRecorder {
+func (be *testBackend) request(t *testing.T, method, path string, header http.Header, payload any) *httptest.ResponseRecorder {
 	t.Helper()
 	var req *http.Request
 	var err error
@@ -87,8 +87,11 @@ func (be *testBackend) request(t *testing.T, method, path string, payload any) *
 		require.NoError(t, err2)
 		req, err = http.NewRequest(method, path, bytes.NewReader(payloadBytes))
 	}
-
 	require.NoError(t, err)
+
+	// Set header
+	req.Header = header
+
 	rr := httptest.NewRecorder()
 	be.boost.getRouter().ServeHTTP(rr, req)
 	return rr
@@ -168,10 +171,13 @@ func TestWebserverMaxHeaderSize(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	t.Run("At least one relay is available", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
 		time.Sleep(time.Millisecond * 20)
 		path := "/eth/v1/builder/status"
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.NotEmpty(t, rr.Header().Get("X-MEVBoost-Version"))
@@ -179,11 +185,14 @@ func TestStatus(t *testing.T) {
 	})
 
 	t.Run("No relays available", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
 		backend.relays[0].Server.Close() // makes the relay unavailable
 
 		path := "/eth/v1/builder/status"
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 
 		require.Equal(t, http.StatusServiceUnavailable, rr.Code)
 		require.NotEmpty(t, rr.Header().Get("X-MEVBoost-Version"))
@@ -206,19 +215,24 @@ func TestRegisterValidator(t *testing.T) {
 	payload := []builderApiV1.SignedValidatorRegistration{reg}
 
 	t.Run("Normal function", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 	})
 
 	t.Run("Relay error response", func(t *testing.T) {
-		backend := newTestBackend(t, 2, time.Second)
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
 
+		backend := newTestBackend(t, 2, time.Second)
 		backend.relays[0].ResponseDelay = 5 * time.Millisecond
 		backend.relays[1].ResponseDelay = 5 * time.Millisecond
 
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 		require.Equal(t, 1, backend.relays[1].GetRequestCount(path))
@@ -227,7 +241,8 @@ func TestRegisterValidator(t *testing.T) {
 		backend.relays[0].OverrideHandleRegisterValidator(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 		})
-		rr = backend.request(t, http.MethodPost, path, payload)
+
+		rr = backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, http.StatusOK, rr.Code)
 		require.Equal(t, 2, backend.relays[0].GetRequestCount(path))
 		require.Equal(t, 2, backend.relays[1].GetRequestCount(path))
@@ -236,7 +251,7 @@ func TestRegisterValidator(t *testing.T) {
 		backend.relays[1].OverrideHandleRegisterValidator(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 		})
-		rr = backend.request(t, http.MethodPost, path, payload)
+		rr = backend.request(t, http.MethodPost, path, header, payload)
 		require.JSONEq(t, `{"code":502,"message":"no successful relay response"}`+"\n", rr.Body.String())
 		require.Equal(t, http.StatusBadGateway, rr.Code)
 		require.Equal(t, 3, backend.relays[0].GetRequestCount(path))
@@ -244,13 +259,16 @@ func TestRegisterValidator(t *testing.T) {
 	})
 
 	t.Run("mev-boost relay timeout works with slow relay", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, 150*time.Millisecond) // 10ms max
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, http.StatusOK, rr.Code)
 
 		// Now make the relay return slowly, mev-boost should return an error
 		backend.relays[0].ResponseDelay = 180 * time.Millisecond
-		rr = backend.request(t, http.MethodPost, path, payload)
+		rr = backend.request(t, http.MethodPost, path, header, payload)
 		require.JSONEq(t, `{"code":502,"message":"no successful relay response"}`+"\n", rr.Body.String())
 		require.Equal(t, http.StatusBadGateway, rr.Code)
 		require.Equal(t, 2, backend.relays[0].GetRequestCount(path))
@@ -269,13 +287,30 @@ func TestGetHeader(t *testing.T) {
 	require.Equal(t, "/eth/v1/builder/header/1/0xe28385e7bd68df656cd0042b74b69c3104b5356ed1f20eb69f1f925df47a3ab7/0x8a1d7b8dd64e0aafe7ea7b6c95065c9364cf99d38470c12ee807d55f7de1529ad29ce2c422e0b65e3d5a05c02caca249", path)
 
 	t.Run("Okay response from relay", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 	})
 
 	t.Run("Okay response from relay deneb", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
+		backend := newTestBackend(t, 1, time.Second)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+	})
+
+	t.Run("Okay response from relay deneb in ssz", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, MediaTypeOctetStream)
+
 		backend := newTestBackend(t, 1, time.Second)
 		resp := backend.relays[0].MakeGetHeaderResponse(
 			12345,
@@ -285,12 +320,125 @@ func TestGetHeader(t *testing.T) {
 			spec.DataVersionDeneb,
 		)
 		backend.relays[0].GetHeaderResponse = resp
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, MediaTypeOctetStream, rr.Header().Get(HeaderContentType))
+
+		// Ensure the response was SSZ
+		bid := new(builderApiDeneb.SignedBuilderBid)
+		err := bid.UnmarshalSSZ(rr.Body.Bytes())
+		require.NoError(t, err)
+		require.EqualValues(t, *resp.Deneb, *bid)
+	})
+
+	t.Run("Relay returns SSZ, mev-boost returns SSZ", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "application/octet-stream;q=1.0,application/json;q=0.9")
+
+		backend := newTestBackend(t, 1, time.Second)
+		backend.relays[0].ForceSSZ = true
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, MediaTypeOctetStream, rr.Header().Get(HeaderContentType))
+	})
+
+	t.Run("One relay returns SSZ, another relay returns JSON, mev-boost returns SSZ", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "application/octet-stream;q=1.0,application/json;q=0.9")
+
+		backend := newTestBackend(t, 2, time.Second)
+		backend.relays[0].ForceSSZ = true
+		backend.relays[1].ForceJSON = true
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, 1, backend.relays[1].GetRequestCount(path))
+		require.Equal(t, MediaTypeOctetStream, rr.Header().Get(HeaderContentType))
+	})
+
+	t.Run("One relay returns JSON, mev-boost returns preferred SSZ", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "application/octet-stream;q=1.0,application/json;q=0.9")
+
+		backend := newTestBackend(t, 1, time.Second)
+		backend.relays[0].ForceJSON = true
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, MediaTypeOctetStream, rr.Header().Get(HeaderContentType))
+	})
+
+	t.Run("Two relays return JSON, mev-boost returns preferred SSZ", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "application/octet-stream;q=1.0,application/json;q=0.9")
+
+		backend := newTestBackend(t, 2, time.Second)
+		backend.relays[0].ForceJSON = true
+		backend.relays[1].ForceJSON = true
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, 1, backend.relays[1].GetRequestCount(path))
+		require.Equal(t, MediaTypeOctetStream, rr.Header().Get(HeaderContentType))
+	})
+
+	t.Run("Accepts both with Q values", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "application/octet-stream;q=1.0,application/json;q=0.9")
+
+		backend := newTestBackend(t, 1, time.Second)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, MediaTypeOctetStream, rr.Header().Get(HeaderContentType))
+	})
+
+	t.Run("No accept value", func(t *testing.T) {
+		// This should default to JSON
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Del(HeaderAccept)
+
+		backend := newTestBackend(t, 1, time.Second)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, MediaTypeJSON, rr.Header().Get(HeaderContentType)) //nolint:testifylint
+	})
+
+	t.Run("Accepts both but prefers JSON", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "application/octet-stream;q=0.9,application/json;q=1.0")
+
+		backend := newTestBackend(t, 1, time.Second)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
+		require.Equal(t, MediaTypeJSON, rr.Header().Get(HeaderContentType)) //nolint:testifylint
+	})
+
+	t.Run("Only accepts unsupported media type", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderEthConsensusVersion, "deneb")
+		header.Set(HeaderAccept, "plain/text")
+
+		backend := newTestBackend(t, 1, time.Second)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
+		require.Equal(t, http.StatusNotAcceptable, rr.Code, rr.Body.String())
 	})
 
 	t.Run("Bad response from relays", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 2, time.Second)
 		resp := backend.relays[0].MakeGetHeaderResponse(
 			12345,
@@ -303,20 +451,23 @@ func TestGetHeader(t *testing.T) {
 
 		// 1/2 failing responses are okay
 		backend.relays[0].GetHeaderResponse = resp
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 		require.Equal(t, 1, backend.relays[1].GetRequestCount(path))
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 
 		// 2/2 failing responses are okay
 		backend.relays[1].GetHeaderResponse = resp
-		rr = backend.request(t, http.MethodGet, path, nil)
+		rr = backend.request(t, http.MethodGet, path, header, nil)
 		require.Equal(t, 2, backend.relays[0].GetRequestCount(path))
 		require.Equal(t, 2, backend.relays[1].GetRequestCount(path))
 		require.Equal(t, http.StatusNoContent, rr.Code)
 	})
 
 	t.Run("Invalid relay public key", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
 
 		backend.relays[0].GetHeaderResponse = backend.relays[0].MakeGetHeaderResponse(
@@ -331,7 +482,7 @@ func TestGetHeader(t *testing.T) {
 		pk := phase0.BLSPubKey{}
 		backend.boost.relays[0].PublicKey = pk
 
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 
 		// Request should have no content
@@ -339,6 +490,9 @@ func TestGetHeader(t *testing.T) {
 	})
 
 	t.Run("Invalid relay signature", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
 
 		backend.relays[0].GetHeaderResponse = backend.relays[0].MakeGetHeaderResponse(
@@ -352,7 +506,7 @@ func TestGetHeader(t *testing.T) {
 		// Scramble the signature
 		backend.relays[0].GetHeaderResponse.Deneb.Signature = phase0.BLSSignature{}
 
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 
 		// Request should have no content
@@ -360,42 +514,54 @@ func TestGetHeader(t *testing.T) {
 	})
 
 	t.Run("Invalid slot number", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		// Number larger than uint64 creates parsing error
 		slot := fmt.Sprintf("%d0", uint64(math.MaxUint64))
 		invalidSlotPath := fmt.Sprintf("/eth/v1/builder/header/%s/%s/%s", slot, hash.String(), pubkey.String())
 
 		backend := newTestBackend(t, 1, time.Second)
-		rr := backend.request(t, http.MethodGet, invalidSlotPath, nil)
+		rr := backend.request(t, http.MethodGet, invalidSlotPath, header, nil)
 		require.JSONEq(t, `{"code":400,"message":"invalid slot"}`+"\n", rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 		require.Equal(t, 0, backend.relays[0].GetRequestCount(path))
 	})
 
 	t.Run("Invalid pubkey length", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		invalidPubkeyPath := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 1, hash.String(), "0x1")
 
 		backend := newTestBackend(t, 1, time.Second)
-		rr := backend.request(t, http.MethodGet, invalidPubkeyPath, nil)
+		rr := backend.request(t, http.MethodGet, invalidPubkeyPath, header, nil)
 		require.JSONEq(t, `{"code":400,"message":"invalid pubkey"}`+"\n", rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 		require.Equal(t, 0, backend.relays[0].GetRequestCount(path))
 	})
 
 	t.Run("Invalid hash length", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		invalidSlotPath := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 1, "0x1", pubkey.String())
 
 		backend := newTestBackend(t, 1, time.Second)
-		rr := backend.request(t, http.MethodGet, invalidSlotPath, nil)
+		rr := backend.request(t, http.MethodGet, invalidSlotPath, header, nil)
 		require.JSONEq(t, `{"code":400,"message":"invalid hash"}`+"\n", rr.Body.String())
 		require.Equal(t, http.StatusBadRequest, rr.Code, rr.Body.String())
 		require.Equal(t, 0, backend.relays[0].GetRequestCount(path))
 	})
 
 	t.Run("Invalid parent hash", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
 
 		invalidParentHashPath := getHeaderPath(1, phase0.Hash32{}, pubkey)
-		rr := backend.request(t, http.MethodGet, invalidParentHashPath, nil)
+		rr := backend.request(t, http.MethodGet, invalidParentHashPath, header, nil)
 		require.Equal(t, http.StatusNoContent, rr.Code)
 		require.Equal(t, 0, backend.relays[0].GetRequestCount(path))
 	})
@@ -409,6 +575,9 @@ func TestGetHeaderBids(t *testing.T) {
 	require.Equal(t, "/eth/v1/builder/header/2/0xe28385e7bd68df656cd0042b74b69c3104b5356ed1f20eb69f1f925df47a3ab7/0x8a1d7b8dd64e0aafe7ea7b6c95065c9364cf99d38470c12ee807d55f7de1529ad29ce2c422e0b65e3d5a05c02caca249", path)
 
 	t.Run("Use header with highest value", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		// Create backend and register 3 relays.
 		backend := newTestBackend(t, 3, time.Second)
 
@@ -440,7 +609,7 @@ func TestGetHeaderBids(t *testing.T) {
 		)
 
 		// Run the request.
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 
 		// Each relay must have received the request.
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
@@ -459,6 +628,9 @@ func TestGetHeaderBids(t *testing.T) {
 	})
 
 	t.Run("Use header with lowest blockhash if same value", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		// Create backend and register 3 relays.
 		backend := newTestBackend(t, 3, time.Second)
 
@@ -487,7 +659,7 @@ func TestGetHeaderBids(t *testing.T) {
 		)
 
 		// Run the request.
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 
 		// Each relay must have received the request.
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
@@ -510,6 +682,9 @@ func TestGetHeaderBids(t *testing.T) {
 	})
 
 	t.Run("Respect minimum bid cutoff", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		// Create backend and register relay.
 		backend := newTestBackend(t, 1, time.Second)
 
@@ -523,7 +698,7 @@ func TestGetHeaderBids(t *testing.T) {
 		)
 
 		// Run the request.
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 
 		// Each relay must have received the request.
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
@@ -533,6 +708,9 @@ func TestGetHeaderBids(t *testing.T) {
 	})
 
 	t.Run("Allow bids which meet minimum bid cutoff", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		// Create backend and register relay.
 		backend := newTestBackend(t, 1, time.Second)
 
@@ -546,7 +724,7 @@ func TestGetHeaderBids(t *testing.T) {
 		)
 
 		// Run the request.
-		rr := backend.request(t, http.MethodGet, path, nil)
+		rr := backend.request(t, http.MethodGet, path, header, nil)
 
 		// Each relay must have received the request.
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
@@ -598,8 +776,11 @@ func TestGetPayload(t *testing.T) {
 	}
 
 	t.Run("Okay response from relay", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 
@@ -610,6 +791,9 @@ func TestGetPayload(t *testing.T) {
 	})
 
 	t.Run("Bad response from relays", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 2, time.Second)
 		resp := &builderApi.VersionedSubmitBlindedBlockResponse{
 			Version: spec.DataVersionDeneb,
@@ -623,7 +807,7 @@ func TestGetPayload(t *testing.T) {
 
 		// 1/2 failing responses are okay
 		backend.relays[0].GetPayloadResponse = resp
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.GreaterOrEqual(t, backend.relays[1].GetRequestCount(path)+backend.relays[0].GetRequestCount(path), 1)
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 
@@ -631,7 +815,7 @@ func TestGetPayload(t *testing.T) {
 		backend = newTestBackend(t, 2, time.Second)
 		backend.relays[0].GetPayloadResponse = resp
 		backend.relays[1].GetPayloadResponse = resp
-		rr = backend.request(t, http.MethodPost, path, payload)
+		rr = backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, 1, backend.relays[0].GetRequestCount(path))
 		require.Equal(t, 1, backend.relays[1].GetRequestCount(path))
 		require.JSONEq(t, `{"code":502,"message":"no successful relay response"}`+"\n", rr.Body.String())
@@ -639,6 +823,9 @@ func TestGetPayload(t *testing.T) {
 	})
 
 	t.Run("Retries on error from relay", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, 2*time.Second)
 
 		count := 0
@@ -653,11 +840,14 @@ func TestGetPayload(t *testing.T) {
 			}
 			count++
 		})
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 	})
 
 	t.Run("Error after max retries are reached", func(t *testing.T) {
+		header := make(http.Header)
+		header.Set(HeaderAccept, MediaTypeJSON)
+
 		backend := newTestBackend(t, 1, time.Second)
 
 		count := 0
@@ -674,7 +864,7 @@ func TestGetPayload(t *testing.T) {
 				require.NoError(t, err, "failed to write error response") //nolint:testifylint // if we fail here the test is compromised
 			}
 		})
-		rr := backend.request(t, http.MethodPost, path, payload)
+		rr := backend.request(t, http.MethodPost, path, header, payload)
 		require.Equal(t, 5, backend.relays[0].GetRequestCount(path))
 		require.JSONEq(t, `{"code":502,"message":"no successful relay response"}`+"\n", rr.Body.String())
 		require.Equal(t, http.StatusBadGateway, rr.Code, rr.Body.String())
@@ -825,6 +1015,9 @@ func denebExecutionPayloadAndBlobsBundle(header *deneb.ExecutionPayloadHeader, k
 }
 
 func TestGetPayloadForks(t *testing.T) {
+	header := make(http.Header)
+	header.Set(HeaderAccept, MediaTypeJSON)
+
 	//nolint: forcetypeassert,thelper
 	tests := []struct {
 		fork              string
@@ -878,7 +1071,7 @@ func TestGetPayloadForks(t *testing.T) {
 			// Prepare getPayload response
 			backend.relays[0].GetPayloadResponse = blindedBlockToBlockResponse(signedBlindedBeaconBlock)
 			// call getPayload, ensure it's only called on relay 0 (origin of the bid)
-			rr := backend.request(t, http.MethodPost, params.PathGetPayload, signedBlindedBeaconBlock)
+			rr := backend.request(t, http.MethodPost, params.PathGetPayload, header, signedBlindedBeaconBlock)
 			require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 			require.Equal(t, 1, backend.relays[0].GetRequestCount(params.PathGetPayload))
 			resp := new(builderApi.VersionedSubmitBlindedBlockResponse)
@@ -891,6 +1084,9 @@ func TestGetPayloadForks(t *testing.T) {
 }
 
 func TestGetPayloadToAllRelays(t *testing.T) {
+	header := make(http.Header)
+	header.Set(HeaderAccept, MediaTypeJSON)
+
 	// Load the signed blinded beacon block used for getPayload
 	jsonFile, err := os.Open("../testdata/signed-blinded-beacon-block-deneb.json")
 	require.NoError(t, err)
@@ -910,7 +1106,7 @@ func TestGetPayloadToAllRelays(t *testing.T) {
 		"0x8a1d7b8dd64e0aafe7ea7b6c95065c9364cf99d38470c12ee807d55f7de1529ad29ce2c422e0b65e3d5a05c02caca249",
 		spec.DataVersionDeneb,
 	)
-	rr := backend.request(t, http.MethodGet, getHeaderPath, nil)
+	rr := backend.request(t, http.MethodGet, getHeaderPath, header, nil)
 	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 	require.Equal(t, 1, backend.relays[0].GetRequestCount(getHeaderPath))
 	require.Equal(t, 1, backend.relays[1].GetRequestCount(getHeaderPath))
@@ -919,7 +1115,7 @@ func TestGetPayloadToAllRelays(t *testing.T) {
 	backend.relays[0].GetPayloadResponse = blindedBlockToBlockResponse(signedBlindedBeaconBlock)
 
 	// call getPayload, ensure it's called to all relays
-	rr = backend.request(t, http.MethodPost, params.PathGetPayload, signedBlindedBeaconBlock)
+	rr = backend.request(t, http.MethodPost, params.PathGetPayload, header, signedBlindedBeaconBlock)
 	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
 	require.Equal(t, 1, backend.relays[0].GetRequestCount(params.PathGetPayload))
 	require.Equal(t, 1, backend.relays[1].GetRequestCount(params.PathGetPayload))
