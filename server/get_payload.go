@@ -175,7 +175,6 @@ func (m *BoostService) getPayload(log *logrus.Entry, signedBlindedBeaconBlockByt
 				req.Header.Set(HeaderContentType, proposerContentType)
 				req.Header.Set(HeaderEthConsensusVersion, proposerEthConsensusVersion)
 				req.Header.Set(HeaderKeySlotUID, currentSlotUID)
-				req.Header.Set(HeaderStartTimeUnixMS, fmt.Sprintf("%d", time.Now().UTC().UnixMilli()))
 				req.Header.Set(HeaderDateMilliseconds, fmt.Sprintf("%d", time.Now().UTC().UnixMilli()))
 				req.Header.Set(HeaderUserAgent, userAgent)
 
