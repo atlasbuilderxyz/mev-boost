@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/ethereum/go-ethereum v1.15.9
-	github.com/flashbots/go-boost-utils v1.9.0
+	github.com/flashbots/go-boost-utils v1.10.0
 	github.com/flashbots/go-utils v0.10.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
@@ -36,8 +36,8 @@ require (
 )
 
 require (
-	github.com/attestantio/go-builder-client v0.6.1
-	github.com/attestantio/go-eth2-client v0.25.0
+	github.com/attestantio/go-builder-client v0.7.2
+	github.com/attestantio/go-eth2-client v0.27.1
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
