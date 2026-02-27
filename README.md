@@ -254,6 +254,8 @@ Usage of mev-boost:
         use Mainnet (default true)
   -min-bid float
         minimum bid to accept from a relay [eth]
+  -pulsechain
+        use PulseChain mainnet
   -relay value
         a single relay, can be specified multiple times
   -relay-check

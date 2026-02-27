@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	SlotTimeSecMainnet = 12
+	SlotTimeSecMainnet    = 12
+	SlotTimeSecPulsechain = 10
 )
 
 func GetEnv(key, defaultValue string) string {
