@@ -45,6 +45,7 @@ See also:
   - [Systemd configuration](#systemd-configuration)
 - [Usage](#usage)
   - [PulseChain](#pulsechain)
+  - [Consensus Client Configuration](#consensus-client-configuration)
   - [`test-cli`](#test-cli)
   - [mev-boost cli arguments](#mev-boost-cli-arguments)
 - [API](#api)
@@ -115,15 +116,24 @@ make build
 docker pull ghcr.io/atlasbuilderxyz/mev-boost:latest
 
 # Run it
-docker run ghcr.io/atlasbuilderxyz/mev-boost -pulsechain -relay-check -relay URL-OF-TRUSTED-RELAY
+docker run ghcr.io/atlasbuilderxyz/mev-boost -pulsechain -relay-check \
+    -relay https://0xb3700a845d13ab88e1281b32ca446efd19b0e737639cc06197c5f0d44ec9eec2bc47949a662efa197126d5b6c48fae9b@boost-relay.atlasbuilder.xyz
 ```
 
 Or build locally:
 
 ```bash
 docker build -t mev-boost .
-docker run mev-boost -pulsechain -relay-check -relay URL-OF-TRUSTED-RELAY
+docker run mev-boost -pulsechain -relay-check \
+    -relay https://0xb3700a845d13ab88e1281b32ca446efd19b0e737639cc06197c5f0d44ec9eec2bc47949a662efa197126d5b6c48fae9b@boost-relay.atlasbuilder.xyz
 ```
+
+> **Note:** If running MEV-Boost in Docker alongside a beacon node on the host, use `--network host` so the beacon node can reach MEV-Boost at `localhost:18550`:
+> ```
+> docker run --network host ghcr.io/atlasbuilderxyz/mev-boost -pulsechain -relay-check \
+>     -relay https://0xb3700a845d13ab88e1281b32ca446efd19b0e737639cc06197c5f0d44ec9eec2bc47949a662efa197126d5b6c48fae9b@boost-relay.atlasbuilder.xyz
+> ```
+> Without `--network host`, MEV-Boost listens on `localhost` inside the container, which is isolated from the host network. Beacon nodes on the host will fail to connect with registration errors.
 
 ## Systemd configuration
 
@@ -148,9 +158,7 @@ RestartSec=5
 ExecStart=/home/mev-boost/bin/mev-boost \
         -pulsechain \
         -relay-check \
-        -relay YOUR_RELAY_CHOICE_A \
-        -relay YOUR_RELAY_CHOICE_B \
-        -relay YOUR_RELAY_CHOICE_C
+        -relay https://0xb3700a845d13ab88e1281b32ca446efd19b0e737639cc06197c5f0d44ec9eec2bc47949a662efa197126d5b6c48fae9b@boost-relay.atlasbuilder.xyz
 
 [Install]
 WantedBy=multi-user.target
@@ -174,10 +182,43 @@ Please take a look at the specific release documentation about the available com
 
 ## PulseChain
 
-Run MEV-Boost pointed at a PulseChain relay:
+Run MEV-Boost pointed at the Atlas relay:
 
 ```
-./mev-boost -pulsechain -relay-check -relay URL-OF-TRUSTED-RELAY
+./mev-boost -pulsechain -relay-check \
+    -relay https://0xb3700a845d13ab88e1281b32ca446efd19b0e737639cc06197c5f0d44ec9eec2bc47949a662efa197126d5b6c48fae9b@boost-relay.atlasbuilder.xyz
+```
+
+## Consensus Client Configuration
+
+Both the beacon node and validator client require flags to use MEV-Boost.
+
+### [Lighthouse-Pulse](https://gitlab.com/pulsechaincom/lighthouse-pulse)
+
+Beacon node:
+```
+lighthouse bn \
+    --builder http://localhost:18550
+```
+
+Validator client:
+```
+lighthouse vc \
+    --builder-proposals
+```
+
+### [Prysm-Pulse](https://gitlab.com/pulsechaincom/prysm-pulse)
+
+Beacon node:
+```
+prysm beacon-chain \
+    --http-mev-relay=http://localhost:18550
+```
+
+Validator client:
+```
+prysm validator \
+    --enable-builder
 ```
 
 ## `test-cli`
@@ -266,9 +307,7 @@ Example for setting a minimum bid value of 0.06 PLS:
 ```
 ./mev-boost -pulsechain \
     -min-bid 0.06 \
-    -relay $YOUR_RELAY_CHOICE_A \
-    -relay $YOUR_RELAY_CHOICE_B \
-    -relay $YOUR_RELAY_CHOICE_C
+    -relay https://0xb3700a845d13ab88e1281b32ca446efd19b0e737639cc06197c5f0d44ec9eec2bc47949a662efa197126d5b6c48fae9b@boost-relay.atlasbuilder.xyz
 ```
 
 ---
