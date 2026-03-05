@@ -4,7 +4,6 @@
 
 [![Goreport status](https://goreportcard.com/badge/github.com/flashbots/mev-boost)](https://goreportcard.com/report/github.com/flashbots/mev-boost)
 [![Test status](https://github.com/flashbots/mev-boost/workflows/Tests/badge.svg?branch=develop)](https://github.com/flashbots/mev-boost/actions?query=workflow%3A%22Tests%22)
-[![Docker hub](https://badgen.net/docker/size/flashbots/mev-boost?icon=docker&label=image)](https://hub.docker.com/r/flashbots/mev-boost/tags)
 
 ## What is MEV-Boost?
 
@@ -25,13 +24,12 @@ A MEV-Boost security assessment was conducted on 2022-06-20 by [lotusbumi](https
 
 ## Who can run MEV-Boost?
 
-MEV-Boost is a piece of software that any PoS Ethereum node operator (including solo validators) can run as part of their Beacon Client software. It is compatible with any Ethereum consensus client. Support and installation instructions for each client can be found [here](#installing).
+MEV-Boost is a piece of software that any PoS Ethereum node operator (including solo validators) can run as part of their Beacon Client software. It is compatible with any Ethereum consensus client. Support and installation instructions for each client can be found [here](#installing).
 
 ---
 
 See also:
 
-* [MEV-Boost Docker images](https://hub.docker.com/r/flashbots/mev-boost)
 * [Wiki](https://github.com/flashbots/mev-boost/wiki)
 * Specs:
   * [Builder API](https://ethereum.github.io/builder-specs)
@@ -42,15 +40,11 @@ See also:
 
 - [Background](#background)
 - [Installing](#installing)
-  - [Binaries](#binaries)
   - [From source](#from-source)
   - [From Docker image](#from-docker-image)
   - [Systemd configuration](#systemd-configuration)
 - [Usage](#usage)
-  - [Mainnet](#mainnet)
-  - [Sepolia testnet](#sepolia-testnet)
-  - [Holesky testnet](#holesky-testnet)
-  - [Hoodi testnet](#hoodi-testnet)
+  - [PulseChain](#pulsechain)
   - [`test-cli`](#test-cli)
   - [mev-boost cli arguments](#mev-boost-cli-arguments)
 - [API](#api)
@@ -78,14 +72,6 @@ Read more in [Why run MEV-Boost?](https://writings.flashbots.net/why-run-mevboos
 
 The most common setup is to install MEV-Boost on the same machine as the beacon client. Multiple beacon-clients can use a single MEV-Boost instance. The default port is 18550.
 
-See also [Rémy Roy's guide](https://github.com/eth-educators/ethstaker-guides/blob/main/docs/prepare-for-the-merge.md#installing-mev-boost) for comprehensive instructions on installing, configuring and running MEV-Boost.
-
-## Binaries
-
-Each release includes binaries from Linux, Windows and macOS. You can find the latest release at
-https://github.com/flashbots/mev-boost/releases
-
-
 ## From source
 
 Requires [Go 1.18+](https://go.dev/doc/install).
@@ -101,19 +87,15 @@ mev-boost -help
 
 ### Clone and Build
 
-Ensure you are downloading the most updated MEV-Boost release. Releases are available at https://github.com/flashbots/mev-boost/releases
+Ensure you are downloading the most updated MEV-Boost release. Releases are available at https://github.com/atlasbuilderxyz/mev-boost/releases
 
 clone the repository and build it:
 
 ```bash
-# By default, the develop branch includes ongoing merged PRs a future release.
-git clone https://github.com/flashbots/mev-boost.git
+git clone https://github.com/atlasbuilderxyz/mev-boost.git
 cd mev-boost
 
-# You can use the stable branch, which is always updated with the latest released version
-git checkout stable
-
-# If you want to build a specific release, check out the tag. See also https://github.com/flashbots/mev-boost/releases
+# If you want to build a specific release, check out the tag. See also https://github.com/atlasbuilderxyz/mev-boost/releases
 git checkout tags/YOUR_VERSION
 
 # Build most recent version of MEV-Boost
@@ -125,17 +107,22 @@ make build
 
 ## From Docker image
 
-We maintain a MEV-Boost Docker images at https://hub.docker.com/r/flashbots/mev-boost
-
 - [Install Docker Engine](https://docs.docker.com/engine/install/)
 - Pull & run the latest image:
 
 ```bash
-# Get the MEV-Boost image
-docker pull flashbots/mev-boost:latest
+# Pull the image
+docker pull ghcr.io/atlasbuilderxyz/mev-boost:latest
 
 # Run it
-docker run flashbots/mev-boost -help
+docker run ghcr.io/atlasbuilderxyz/mev-boost -pulsechain -relay-check -relay URL-OF-TRUSTED-RELAY
+```
+
+Or build locally:
+
+```bash
+docker build -t mev-boost .
+docker run mev-boost -pulsechain -relay-check -relay URL-OF-TRUSTED-RELAY
 ```
 
 ## Systemd configuration
@@ -159,6 +146,7 @@ Type=simple
 Restart=always
 RestartSec=5
 ExecStart=/home/mev-boost/bin/mev-boost \
+        -pulsechain \
         -relay-check \
         -relay YOUR_RELAY_CHOICE_A \
         -relay YOUR_RELAY_CHOICE_B \
@@ -175,49 +163,21 @@ WantedBy=multi-user.target
 A single MEV-Boost instance can be used by multiple beacon nodes and validators.
 
 Aside from running MEV-Boost on your local network, you must configure:
-* individual **beacon nodes** to connect to MEV-Boost. Beacon Node configuration varies by Consensus client. Guides for each client can be found on the [MEV-boost website](https://boost.flashbots.net/#block-356364ebd7cc424fb524428ed0134b21).
+* individual **beacon nodes** to connect to MEV-Boost. Beacon Node configuration varies by Consensus client.
 * individual **validators** to configure a preferred relay selection. Note: validators should take precautions to only connect to trusted relays. Read more about [the role of relays here](https://docs.flashbots.net/flashbots-mev-boost/relay).
-
-Lists of available relays are maintained by
-* [Ethstaker](https://github.com/remyroy/ethstaker/blob/main/MEV-relay-list.md) [[2]](https://ethstaker.cc/mev-relay-list/)
-* [Lido](https://research.lido.fi/t/lido-on-ethereum-call-for-relay-providers/2844)
 
 ## Note on usage documentation
 
 The documentation in this README reflects the latest state of the `main` branch, which may have cli flags or functionality not present in the latest release.
 
-Please take a look at the specific release documentation about the available command line flags: https://github.com/flashbots/mev-boost/releases
+Please take a look at the specific release documentation about the available command line flags: https://github.com/atlasbuilderxyz/mev-boost/releases
 
-## Mainnet
+## PulseChain
 
-Run MEV-Boost pointed at a mainnet relay:
-
-```
-./mev-boost -relay-check -relay URL-OF-TRUSTED-RELAY
-```
-
-## Sepolia testnet
-
-Run MEV-Boost pointed at a Sepolia relay:
+Run MEV-Boost pointed at a PulseChain relay:
 
 ```
-./mev-boost -sepolia -relay-check -relay URL-OF-TRUSTED-RELAY
-```
-
-## Holesky testnet
-
-Run MEV-Boost pointed at a Holesky relay:
-
-```
-./mev-boost -holesky -relay-check -relay URL-OF-TRUSTED-RELAY
-```
-
-## Hoodi testnet
-
-Run MEV-Boost pointed at a Hoodi relay:
-
-```
-./mev-boost -hoodi -relay-check -relay URL-OF-TRUSTED-RELAY
+./mev-boost -pulsechain -relay-check -relay URL-OF-TRUSTED-RELAY
 ```
 
 ## `test-cli`
@@ -227,7 +187,7 @@ Run MEV-Boost pointed at a Hoodi relay:
 
 ## mev-boost cli arguments
 
-These are the CLI arguments for the develop branch. For arguments available in a specific release, check the [release page](https://github.com/flashbots/mev-boost/releases).
+These are the CLI arguments for the develop branch. For arguments available in a specific release, check the [release page](https://github.com/atlasbuilderxyz/mev-boost/releases).
 
 ```
 $ ./mev-boost -help
@@ -284,12 +244,12 @@ times for multiple relays. Use whichever method suits your preferences.
 These two MEV-Boost commands are equivalent:
 
 ```
-./mev-boost -relay-check \
+./mev-boost -pulsechain -relay-check \
     -relays $YOUR_RELAY_CHOICE_A,$YOUR_RELAY_CHOICE_B,$YOUR_RELAY_CHOICE_C
 ```
 
 ```
-./mev-boost -relay-check \
+./mev-boost -pulsechain -relay-check \
     -relay $YOUR_RELAY_CHOICE_A \
     -relay $YOUR_RELAY_CHOICE_B \
     -relay $YOUR_RELAY_CHOICE_C
@@ -301,10 +261,10 @@ These two MEV-Boost commands are equivalent:
 The `-min-bid` flag allows setting a minimum bid value. If no bid from the builder network delivers at least this value, MEV-Boost will not return a bid
 to the beacon node, making it fall back to local block production.
 
-Example for setting a minimum bid value of 0.06 ETH:
+Example for setting a minimum bid value of 0.06 PLS:
 
 ```
-./mev-boost \
+./mev-boost -pulsechain \
     -min-bid 0.06 \
     -relay $YOUR_RELAY_CHOICE_A \
     -relay $YOUR_RELAY_CHOICE_B \
