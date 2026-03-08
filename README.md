@@ -204,7 +204,8 @@ lighthouse bn \
 Validator client:
 ```
 lighthouse vc \
-    --builder-proposals
+    --builder-proposals \
+    --gas-limit 45000000
 ```
 
 ### [Prysm-Pulse](https://gitlab.com/pulsechaincom/prysm-pulse)
@@ -218,8 +219,11 @@ prysm beacon-chain \
 Validator client:
 ```
 prysm validator \
-    --enable-builder
+    --enable-builder \
+    --suggested-gas-limit=45000000
 ```
+
+> **Note:** The gas limit flag is required because both Lighthouse-Pulse and Prysm-Pulse default to 30M, but PulseChain's network gas limit is ~45M. Without it, your proposed blocks will be smaller than they should be.
 
 ## `test-cli`
 
