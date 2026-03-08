@@ -77,15 +77,6 @@ The most common setup is to install MEV-Boost on the same machine as the beacon 
 
 Requires [Go 1.18+](https://go.dev/doc/install).
 
-### `go install`
-
-Install the latest MEV-Boost release with `go install`:
-
-```bash
-go install github.com/flashbots/mev-boost@latest
-mev-boost -help
-```
-
 ### Clone and Build
 
 Ensure you are downloading the most updated MEV-Boost release. Releases are available at https://github.com/atlasbuilderxyz/mev-boost/releases
