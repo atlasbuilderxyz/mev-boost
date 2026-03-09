@@ -1,6 +1,6 @@
 module github.com/flashbots/mev-boost
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/ethereum/go-ethereum v1.15.9
@@ -17,6 +17,7 @@ require (
 )
 
 require (
+	github.com/OffchainLabs/go-bitfield v0.0.0-20251031151322-f427d04d8506 // indirect
 	github.com/bits-and-blooms/bitset v1.22.0 // indirect
 	github.com/consensys/bavard v0.1.30 // indirect
 	github.com/consensys/gnark-crypto v0.17.0 // indirect
@@ -37,7 +38,7 @@ require (
 
 require (
 	github.com/attestantio/go-builder-client v0.6.1
-	github.com/attestantio/go-eth2-client v0.25.0
+	github.com/attestantio/go-eth2-client v0.28.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/ferranbt/fastssz v0.1.4 // indirect
