@@ -1,9 +1,9 @@
 github.com/VictoriaMetrics/fastcache v1.12.2 h1:N0y9ASrJ0F6h0QaC3o6uJb3NIZ9VKLjCM7NQbSmF7WI=
 github.com/VictoriaMetrics/fastcache v1.12.2/go.mod h1:AmC+Nzz1+3G2eCPapF6UcsnkThDcMsQicp4xDukwJYI=
-github.com/attestantio/go-builder-client v0.6.1 h1:fn6PC8aDWx2YbptstR1JKP8NyakiNJJTiOE5f9N0z5Q=
-github.com/attestantio/go-builder-client v0.6.1/go.mod h1:f8wi3HzuPxfJoi2PirpJK3yZhte4SavDgKJbRrKoB1Q=
-github.com/attestantio/go-eth2-client v0.25.0 h1:wLQxoteGCbTE/vKCMASx1ze+Zm9rcqtltRnblaLJup4=
-github.com/attestantio/go-eth2-client v0.25.0/go.mod h1:fvULSL9WtNskkOB4i+Yyr6BKpNHXvmpGZj9969fCrfY=
+github.com/attestantio/go-builder-client v0.7.2 h1:bOrtysEIZd9bEM+mAeT6OtAo6LSAft/qylBLwFoFwZ0=
+github.com/attestantio/go-builder-client v0.7.2/go.mod h1:+NADxbaknI5yxl+0mCkMa/VciVsesxRMGNP/poDfV08=
+github.com/attestantio/go-eth2-client v0.27.1 h1:g7bm+gG/p+gfzYdEuxuAepVWYb8EO+2KojV5/Lo2BxM=
+github.com/attestantio/go-eth2-client v0.27.1/go.mod h1:fvULSL9WtNskkOB4i+Yyr6BKpNHXvmpGZj9969fCrfY=
 github.com/bits-and-blooms/bitset v1.22.0 h1:Tquv9S8+SGaS3EhyA+up3FXzmkhxPGjQQCkcs2uw7w4=
 github.com/bits-and-blooms/bitset v1.22.0/go.mod h1:7hO7Gc7Pp1vODcmWvKMRA9BNmbv6a/7QIWpPxHddWR8=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
@@ -33,8 +33,8 @@ github.com/ethereum/go-verkle v0.2.2 h1:I2W0WjnrFUIzzVPwm8ykY+7pL2d4VhlsePn4j7cn
 github.com/ethereum/go-verkle v0.2.2/go.mod h1:M3b90YRnzqKyyzBEWJGqj8Qff4IDeXnzFw0P9bFw3uk=
 github.com/ferranbt/fastssz v0.1.4 h1:OCDB+dYDEQDvAgtAGnTSidK1Pe2tW3nFV40XyMkTeDY=
 github.com/ferranbt/fastssz v0.1.4/go.mod h1:Ea3+oeoRGGLGm5shYAeDgu6PGUlcvQhE2fILyD9+tGg=
-github.com/flashbots/go-boost-utils v1.9.0 h1:KtTE70OYEJmIhK0GxLmXChgBTtBN6fbBK+klwP79AEM=
-github.com/flashbots/go-boost-utils v1.9.0/go.mod h1:vqZMGJCgwbS9WUVRzqfkn4ttRXiul4vKSu5iDtAKDfs=
+github.com/flashbots/go-boost-utils v1.10.0 h1:AGihhYtOjGF/efaBoQefYfmqzKsba6Y7SlfEK2iEPGY=
+github.com/flashbots/go-boost-utils v1.10.0/go.mod h1:vCtklzlENAGLqDrf6JteivgANjzXFqVSQQ3LtoQxyV8=
 github.com/flashbots/go-utils v0.10.0 h1:75XWewRO5GIhdLn8+vqdzzuoqJh+j8wN54A++Id7W0Y=
 github.com/flashbots/go-utils v0.10.0/go.mod h1:i4xxEB6sHDFfNWEIfh+rP6nx3LxynEn8AOZa05EYgwA=
 github.com/go-ole/go-ole v1.2.6/go.mod h1:pprOEPIfldk/42T2oK7lQ4v4JSDwmV0As9GaiUsvbm0=
